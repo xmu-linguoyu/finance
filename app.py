@@ -159,3 +159,52 @@ if analyze_btn:
     except Exception as e:
         st.error(f"发生系统错误: {e}")
         st.code(str(e))
+
+# --- 新增功能：市场雷达 ---
+with st.sidebar:
+    st.divider()
+    st.header("📡 市场雷达 (Beta)")
+    scan_btn = st.button("🔍 扫描全市场优质短债")
+
+if scan_btn:
+    st.info("正在扫描全市场债券基金，寻找稳健标的 (Top 20)...")
+    
+    try:
+        # 1. 获取开放式基金排行 (债基)
+        # akshare 接口: fund_open_fund_rank_em
+        df_rank = ak.fund_open_fund_rank_em(symbol="债券型")
+        
+        # 2. 开发者过滤算法 (The Developer Filter)
+        # 逻辑：
+        # A. 只要近1年收益在 2.5% 到 6% 之间的 (太低没意义，太高是假的/高风险)
+        # B. 只要近6个月收益是正的 (排除最近暴雷的)
+        # C. 只要成立时间超过3年的 (排除新瓜蛋子)
+        
+        df_rank['近1年'] = pd.to_numeric(df_rank['近1年'], errors='coerce')
+        df_rank['近6月'] = pd.to_numeric(df_rank['近6月'], errors='coerce')
+        
+        # 筛选条件
+        candidates = df_rank[
+            (df_rank['近1年'] > 2.5) & 
+            (df_rank['近1年'] < 6.0) &
+            (df_rank['近6月'] > 1.0) 
+        ].head(10) # 只取前10名
+        
+        st.success(f"扫描完成！为您找到 {len(candidates)} 只潜力基金：")
+        
+        # 展示结果
+        for index, row in candidates.iterrows():
+            code = row['基金代码']
+            name = row['基金简称']
+            year_ret = row['近1年']
+            
+            with st.expander(f"{code} | {name} | 年化: {year_ret}%"):
+                st.write(f"近6月收益: {row['近6月']}%")
+                st.write(f"手续费: {row['手续费']}")
+                if st.button(f"审计 {code}", key=code):
+                    # 这里可以联动把 code 填入主输入框 (Streamlit 需要 session_state)
+                    st.session_state['fund_code_input'] = code
+                    st.rerun()
+                    
+    except Exception as e:
+        st.error(f"扫描失败: {e}")
