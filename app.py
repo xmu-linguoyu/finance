@@ -141,3 +141,21 @@ if analyze_btn:
             
             【系统强制结论】: {decision}
             【核心理由】: {reason_core}
+            
+            请根据上述结论和理由，写一段简短、专业的分析报告（100字以内）。
+            用户是台胞证持有者，追求稳健。
+            **必须严格支持系统的结论，禁止反驳或自行发挥。**
+            """
+            
+            response_container = st.empty()
+            full_response = ""
+            for chunk in model.generate_content(prompt, stream=True):
+                full_response += chunk.text
+                response_container.markdown(full_response)
+        
+        status_text.success("✅ 分析完成！")
+        progress_bar.progress(100)
+
+    except Exception as e:
+        st.error(f"发生系统错误: {e}")
+        st.code(str(e))
