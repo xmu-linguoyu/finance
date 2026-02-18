@@ -44,12 +44,27 @@ DOC_PATH = "finance_app/user_portfolio"
 def sync_to_cloud():
     if db:
         try:
-            # 序列化清理，确保 Firestore 能够识别数据结构
-            clean_data = json.loads(json.dumps(st.session_state.favorites))
-            db.document(DOC_PATH).set({"funds": clean_data})
-            st.toast("✅ 云端数据已同步", icon="☁️")
+            # 1. 數據清洗：確保 favorites 列表裡只有純粹的 Python 數據類型
+            # Firestore 不接受 Streamlit 的內部對象 (如 AttrDict)
+            import json
+            current_favs = list(st.session_state.favorites)
+            clean_data = json.loads(json.dumps(current_favs, ensure_ascii=False))
+            
+            # 2. 獲取文件引用
+            doc_ref = db.collection("finance_app").document("user_portfolio")
+            
+            # 3. 執行寫入並等待結果
+            doc_ref.set({"funds": clean_data})
+            
+            st.toast("✅ 雲端同步成功！請刷新 Firebase 頁面查看。", icon="☁️")
+            return True
         except Exception as e:
-            st.error(f"写入失败: {e}")
+            # 這裡會顯示具體的報錯，例如：Permission Denied, Project Not Found 等
+            st.error(f"❌ 寫入失敗！具體原因：{str(e)}")
+            return False
+    else:
+        st.error("❌ 數據庫未連接 (db 為 None)，請檢查 Secrets 中的 firebase_config。")
+        return False
 
 def set_target_fund(code, name):
     st.session_state.fund_code_input = code
