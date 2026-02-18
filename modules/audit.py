@@ -110,10 +110,11 @@ def render_audit_tab(client, db, sync_to_cloud):
             rank_cols = st.columns(num_cols)
             for idx, (key, value) in enumerate(rank_items[:num_cols]):
                 rank_cols[idx].metric(key, value)
-            # Display remaining items as text if more than 5
+            # Display remaining items in structured format if more than 5
             if len(rank_items) > 5:
-                remaining = {k: v for k, v in rank_items[5:]}
-                st.write(remaining)
+                with st.expander("查看更多排名信息"):
+                    remaining = {k: v for k, v in rank_items[5:]}
+                    st.json(remaining)
 
         # 显示重仓股持仓
         if hold_df is not None and not hold_df.empty:
