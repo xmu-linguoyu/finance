@@ -10,10 +10,19 @@ import json
 # --- 0. 数据库初始化 ---
 @st.cache_resource
 def init_db():
-    # 从 Secrets 读取 Firebase 配置
-    key_dict = json.loads(st.secrets["firebase_config"])
-    creds = service_account.Credentials.from_service_account_info(key_dict)
-    return firestore.Client(credentials=creds, project=key_dict["project_id"])
+    try:
+        # 此时 firebase_config 已经是一个 Dict，无需 json.loads
+        key_dict = dict(st.secrets["firebase_config"])
+        
+        # 针对 private_key 可能出现的换行符转义问题进行微调
+        if "private_key" in key_dict:
+            key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+            
+        creds = service_account.Credentials.from_service_account_info(key_dict)
+        return firestore.Client(credentials=creds, project=key_dict["project_id"])
+    except Exception as e:
+        st.error(f"数据库连接失败：{e}")
+        st.stop()
 
 db = init_db()
 doc_ref = db.collection("finance_app").document("user_portfolio")
