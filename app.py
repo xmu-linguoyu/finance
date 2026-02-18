@@ -11,17 +11,18 @@ import json
 @st.cache_resource
 def init_db():
     try:
-        # 此时 firebase_config 已经是一个 Dict，无需 json.loads
+        # Streamlit 自动将 Secrets 解析为类似字典的对象
+        # 所以直接读取，不要使用 json.loads
         key_dict = dict(st.secrets["firebase_config"])
         
-        # 针对 private_key 可能出现的换行符转义问题进行微调
+        # 核心修复：Firebase 私钥中的 \n 必须转换为真正的换行符
         if "private_key" in key_dict:
             key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
             
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict["project_id"])
     except Exception as e:
-        st.error(f"数据库连接失败：{e}")
+        st.error(f"❌ 数据库初始化失败: {e}")
         st.stop()
 
 db = init_db()
