@@ -11,11 +11,10 @@ import json
 @st.cache_resource
 def init_db():
     try:
-        # Streamlit 自动将 Secrets 解析为类似字典的对象
-        # 所以直接读取，不要使用 json.loads
+        # 核心修改：st.secrets["firebase_config"] 现在已经是字典了，直接读取
         key_dict = dict(st.secrets["firebase_config"])
         
-        # 核心修复：Firebase 私钥中的 \n 必须转换为真正的换行符
+        # 必须处理：Firebase 私钥中的 \n 字符需要转义为真正的换行符
         if "private_key" in key_dict:
             key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
             
