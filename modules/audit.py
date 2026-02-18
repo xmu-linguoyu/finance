@@ -109,7 +109,7 @@ def render_audit_tab(client, db, sync_to_cloud):
             num_cols = min(len(rank_items), 5)
             rank_cols = st.columns(num_cols)
             for idx, (key, value) in enumerate(rank_items[:num_cols]):
-                rank_cols[idx].metric(key, value)
+                rank_cols[idx].metric(key, str(value))
             # Display remaining items in structured format if more than 5
             if len(rank_items) > 5:
                 with st.expander("查看更多排名信息"):
