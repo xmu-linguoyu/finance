@@ -144,10 +144,17 @@ with tab1:
                 
                 if client:
                     st.divider()
-                    st.write("🤖 AI 理财建议：")
-                    prompt = f"分析基金{fund_code}，年化{ret_1y:.2f}%，回撤{mdd:.2f}%。用户追求稳健，10万本金，给一句犀利建议。"
-                    response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-                    st.info(response.text)
+                    st.write("🤖 AI 深度解析：")
+                    try:
+                        prompt = f"分析基金{fund_code}，年化{ret_1y:.2f}%，回撤{mdd:.2f}%。用户追求稳健，10万本金，给一句建议。"
+                        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+                        st.info(response.text)
+                    except Exception as e:
+                        if "429" in str(e):
+                            st.warning("⚠️ AI 顾问由于配额限制暂时下班了（429 错误）。")
+                            st.caption("底层的 Python 审计数据是准确的，你可以先手动进行保存或试算。请 1 分钟后再试。")
+                        else:
+                            st.error(f"AI 调用出错: {e}")
 
             except Exception as e:
                 st.error(f"审计中断: {e}")
