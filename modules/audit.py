@@ -42,6 +42,51 @@ def render_audit_tab(client, db, sync_to_cloud):
                     rank_df = None
                     latest_rank = None
 
+                # 获取同类基金总数和全市场基金总数
+                rank_same_total = None
+                rank_all_total = None
+                try:
+                    # 从基金基本信息中提取基金类型
+                    fund_type = None
+                    if info_df is not None and not info_df.empty:
+                        # info_df 为两列 DataFrame，第一列为字段名，第二列为值
+                        type_row = info_df[info_df.iloc[:, 0] == "基金类型"]
+                        if not type_row.empty:
+                            fund_type = type_row.iloc[0, 1]
+
+                    # 根据基金类型映射到 fund_open_fund_rank_em 的 symbol 参数
+                    # akshare fund_open_fund_rank_em 支持的 symbol: "全部", "股票型", "混合型", "债券型", "指数型", "QDII", "FOF"
+                    type_map = {
+                        "股票型": "股票型",
+                        "混合型": "混合型",
+                        "债券型": "债券型",
+                        "指数型": "指数型",
+                        "QDII": "QDII",
+                        "FOF": "FOF",
+                    }
+                    mapped_type = None
+                    if fund_type:
+                        for key, val in type_map.items():
+                            if key in fund_type:
+                                mapped_type = val
+                                break
+
+                    # 获取同类基金总数
+                    # Note: akshare API doesn't provide count-only endpoint,
+                    # so we fetch the full dataframe and count rows
+                    if mapped_type:
+                        same_type_df = ak.fund_open_fund_rank_em(symbol=mapped_type)
+                        if same_type_df is not None and not same_type_df.empty:
+                            rank_same_total = len(same_type_df)
+
+                    # 获取全市场基金总数
+                    # Note: fetching full market data for count
+                    all_fund_df = ak.fund_open_fund_rank_em(symbol="全部")
+                    if all_fund_df is not None and not all_fund_df.empty:
+                        rank_all_total = len(all_fund_df)
+                except Exception:
+                    pass
+
                 # 重仓股持仓（用当前年份，失败则尝试上一年）
                 now = datetime.datetime.now()
                 current_year = str(now.year)
@@ -69,6 +114,8 @@ def render_audit_tab(client, db, sync_to_cloud):
                     "latest_rank": latest_rank,
                     "hold_df": hold_df,
                     "manager_df": manager_df,
+                    "rank_same_total": rank_same_total,
+                    "rank_all_total": rank_all_total,
                 }
             except Exception as e:
                 st.error(f"审计失败: {e}")
@@ -83,6 +130,8 @@ def render_audit_tab(client, db, sync_to_cloud):
         latest_rank = cache.get("latest_rank")
         hold_df = cache.get("hold_df")
         manager_df = cache.get("manager_df")
+        rank_same_total = cache.get("rank_same_total")
+        rank_all_total = cache.get("rank_all_total")
 
         st.subheader(f"📊 标的审计: {audited_code}")
         col1, col2 = st.columns(2)
@@ -109,7 +158,18 @@ def render_audit_tab(client, db, sync_to_cloud):
             num_cols = min(len(rank_items), 5)
             rank_cols = st.columns(num_cols)
             for idx, (key, value) in enumerate(rank_items[:num_cols]):
-                rank_cols[idx].metric(key, str(value))
+                try:
+                    rank_int = int(value)
+                    # 根据字段名判断用同类总数还是全市场总数
+                    if "同类" in key and rank_same_total:
+                        display_val = f"{rank_int} / {rank_same_total}"
+                    elif "总排名" in key and rank_all_total:
+                        display_val = f"{rank_int} / {rank_all_total}"
+                    else:
+                        display_val = str(value)
+                except (ValueError, TypeError):
+                    display_val = str(value)
+                rank_cols[idx].metric(key, display_val)
             # Display remaining items in structured format if more than 5
             if len(rank_items) > 5:
                 with st.expander("查看更多排名信息"):
@@ -156,7 +216,13 @@ def render_audit_tab(client, db, sync_to_cloud):
                     fund_summary_parts.append(f"基本信息：{info_sample.to_string(index=False)}")
 
                 if latest_rank:
-                    fund_summary_parts.append(f"最新同类排名：{latest_rank}")
+                    rank_with_total = dict(latest_rank)
+                    # 附加总数上下文，方便 AI 理解排名相对优劣
+                    if rank_same_total:
+                        rank_with_total["同类基金总数"] = rank_same_total
+                    if rank_all_total:
+                        rank_with_total["全市场基金总数"] = rank_all_total
+                    fund_summary_parts.append(f"最新同类排名：{rank_with_total}")
 
                 if manager_df is not None and not manager_df.empty:
                     # Limit to first 10 rows to avoid excessively long prompts
