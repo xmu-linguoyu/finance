@@ -1,6 +1,6 @@
 streamlit
-google-generativeai
+google-genai
 akshare
 pandas
 plotly
-google-genai
+google-cloud-firestore
