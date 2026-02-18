@@ -3,3 +3,4 @@ google-generativeai
 akshare
 pandas
 plotly
+google-cloud-firestore
