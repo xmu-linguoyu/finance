@@ -1,8 +1,8 @@
 import streamlit as st
 
-# 2026 规范：必须作为第一行 Streamlit 命令
+# 2026 規範：必須是第一行命令
 st.set_page_config(
-    page_title="私人理财中台 Pro", 
+    page_title="私人理財決策中台", 
     layout="wide", 
     page_icon="💰"
 )
@@ -15,41 +15,47 @@ from google.cloud import firestore
 from google.oauth2 import service_account
 import json
 
-# --- 0. 数据库初始化 (AttrDict 兼容版) ---
+# --- 0. 數據庫初始化 (強化版) ---
 @st.cache_resource
 def init_db():
     if "firebase_config" not in st.secrets:
-        st.error("❌ 请在 Secrets 中配置 firebase_config")
+        st.error("❌ 請在 Secrets 中配置 firebase_config")
         return None
     try:
-        # 自动处理 AttrDict 转换与私钥换行符
+        # 自動處理 AttrDict 轉換與私鑰換行符
         key_dict = dict(st.secrets["firebase_config"])
         if "private_key" in key_dict:
             key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict["project_id"])
     except Exception as e:
-        st.error(f"❌ 数据库初始化失败: {e}")
+        st.error(f"❌ 數據庫初始化失敗: {e}")
         return None
 
 db = init_db()
 DOC_PATH = "finance_app/user_portfolio"
 
-# --- 1. 核心持久化逻辑 ---
+# --- 1. 持久化核心邏輯 ---
 def sync_to_cloud():
-    """将收藏夹同步至 Firebase，处理数据清洗"""
+    """清洗數據並強制同步到 Firebase"""
     if db:
         try:
-            # 确保序列化为纯 JSON，解决 Firestore 无法识别 AttrDict 的问题
-            clean_list = json.loads(json.dumps(st.session_state.favorites, ensure_ascii=False))
-            db.document(DOC_PATH).set({"funds": clean_list, "last_sync": str(pd.Timestamp.now())}, merge=True)
-            st.toast("✅ 云端同步成功", icon="☁️")
+            # 關鍵步驟：將 session_state 數據轉化為純 JSON 格式，排除 AttrDict
+            raw_favs = list(st.session_state.favorites)
+            clean_list = json.loads(json.dumps(raw_favs, ensure_ascii=False))
+            
+            # 寫入指定的文檔路徑
+            db.document(DOC_PATH).set({
+                "funds": clean_list, 
+                "last_sync": str(pd.Timestamp.now())
+            }, merge=True)
+            st.toast("✅ 雲端同步完成", icon="☁️")
         except Exception as e:
-            st.error(f"❌ 同步失败: {e}")
+            st.error(f"❌ 雲端同步失敗: {e}")
 
 def load_from_cloud():
-    """启动时自动恢复收藏数据"""
-    if db and not st.session_state.get("initialized", False):
+    """啟動時自動拉取雲端數據"""
+    if db and "initialized" not in st.session_state:
         try:
             res = db.document(DOC_PATH).get()
             if res.exists:
@@ -58,7 +64,7 @@ def load_from_cloud():
         except:
             st.session_state.favorites = []
 
-# --- 2. 状态初始化 ---
+# --- 2. 狀態管理 ---
 if "favorites" not in st.session_state:
     st.session_state.favorites = []
 if "fund_code_input" not in st.session_state:
@@ -69,23 +75,22 @@ if "auto_run" not in st.session_state:
 load_from_cloud()
 
 # --- 3. 界面布局 ---
-st.title("🤖 个人理财决策系统 (2026 版)")
+st.title("🤖 穩健投資決策系統")
 
-# 侧边栏：配置与收藏列表
 with st.sidebar:
-    st.header("⚙️ 配置面板")
+    st.header("⚙️ 系統配置")
     api_key = st.secrets.get("GOOGLE_API_KEY") or st.text_input("Gemini API Key", type="password")
     
     st.divider()
-    st.subheader("❤️ 我的云端追踪")
+    st.subheader("❤️ 雲端收藏清單")
     if not st.session_state.favorites:
-        st.caption("暂无收藏，请在审计页添加")
+        st.caption("目前無收藏")
     else:
         for idx, fav in enumerate(st.session_state.favorites):
             with st.expander(f"{fav['name']} ({fav['code']})"):
-                st.write(f"费率损耗: {fav['buy_fee'] + fav['sell_fee'] + fav['annual_fee']}%")
+                st.write(f"費率合計: {fav['buy_fee'] + fav['sell_fee'] + fav['annual_fee']}%")
                 c1, c2 = st.columns(2)
-                if c1.button("审计", key=f"aud_{idx}"):
+                if c1.button("審計", key=f"aud_{idx}"):
                     st.session_state.fund_code_input = fav['code']
                     st.session_state.auto_run = True
                     st.rerun()
@@ -94,116 +99,112 @@ with st.sidebar:
                     sync_to_cloud()
                     st.rerun()
 
-# 主界面 Tab
-tab1, tab2 = st.tabs(["🔍 智能审计与收藏", "🧮 10万本金对比矩阵"])
+# 功能分頁
+tab1, tab2 = st.tabs(["🔍 智能審計與收藏", "🧮 10萬本金收益矩陣"])
 
 if not api_key:
-    st.warning("⚠️ 请在侧边栏配置 API Key 以开启 AI 顾问功能")
+    st.warning("⚠️ 請配置 API Key 以啟用 AI 解析")
     client = None
 else:
     client = genai.Client(api_key=api_key)
 
 # ------------------------------------------
-# TAB 1: 智能审计
+# TAB 1: 智能審計 (核心寫入位置)
 # ------------------------------------------
 with tab1:
     ci, cb = st.columns([3, 1])
-    fund_code = ci.text_input("输入基金代码", key="f_input", value=st.session_state.fund_code_input)
-    start_audit = cb.button("🚀 开始审计", type="primary")
+    fund_code = ci.text_input("輸入基金代碼", key="f_input", value=st.session_state.fund_code_input)
+    run_audit = cb.button("🚀 開始審計", type="primary")
 
-    if start_audit or st.session_state.auto_run:
+    if run_audit or st.session_state.auto_run:
         st.session_state.auto_run = False
-        with st.spinner("正在透视资产数据..."):
+        with st.spinner("抓取實時數據中..."):
             try:
-                # 数据抓取
-                df = ak.fund_open_fund_info_em(symbol=fund_code, indicator="累计净值走势")
-                df = df[['净值日期', '累计净值']].rename(columns={'净值日期': 'date', '累计净值': 'nav'})
+                # 獲取歷史淨值 (AkShare)
+                df = ak.fund_open_fund_info_em(symbol=fund_code, indicator="累積淨值走勢")
+                df = df[['淨值日期', '累積淨值']].rename(columns={'淨值日期': 'date', '累積淨值': 'nav'})
                 df['date'] = pd.to_datetime(df['date'])
-                df_slice = df.tail(252)
+                df_1y = df.tail(252)
 
-                # 指标计算
-                ret_1y = (df_slice['nav'].iloc[-1] / df_slice['nav'].iloc[0] - 1) * 100
-                mdd = ((df_slice['nav'] - df_slice['nav'].cummax()) / df_slice['nav'].cummax()).min() * 100
+                # 計算關鍵指標
+                ret_1y = (df_1y['nav'].iloc[-1] / df_1y['nav'].iloc[0] - 1) * 100
+                mdd = ((df_1y['nav'] - df_1y['nav'].cummax()) / df_1y['nav'].cummax()).min() * 100
 
-                st.subheader(f"📊 资产报告: {fund_code}")
-                m1, m2 = st.columns(2)
-                m1.metric("近一年收益率 (年化参考)", f"{ret_1y:.2f}%")
-                m2.metric("最大回撤 (风险边界)", f"{mdd:.2f}%")
+                st.subheader(f"📊 標的審計: {fund_code}")
+                col1, col2 = st.columns(2)
+                col1.metric("近一年回報率", f"{ret_1y:.2f}%")
+                col2.metric("最大回撤", f"{mdd:.2f}%")
                 
-                fig = px.line(df_slice, x='date', y='nav', title="累计净值增长趋势")
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(px.line(df_1y, x='date', y='nav'), width='stretch')
 
-                # 持久化表单
-                with st.expander("💾 设置费率并保存至云端", expanded=True):
-                    with st.form("save_form"):
-                        f_name = st.text_input("自定义备注", value=fund_code)
-                        c1, c2, c3 = st.columns(3)
-                        b_fee = c1.number_input("申购费 %", 0.0, 5.0, 0.0, step=0.01)
-                        s_fee = c2.number_input("赎回费 %", 0.0, 5.0, 0.0, step=0.01)
-                        # 台胞证背景建议考虑跨境管理成本
-                        a_fee = c3.number_input("年化杂费 %", 0.0, 5.0, 0.1, step=0.01)
+                # --- 核心寫入表單 ---
+                st.divider()
+                st.subheader("💾 設置費率並存入 Firebase")
+                # 必須使用 st.form 配合 form_submit_button
+                with st.form("save_fund_form"):
+                    f_name = st.text_input("備註名稱", value=fund_code)
+                    c1, c2, c3 = st.columns(3)
+                    # 針對 10 萬本金和台胞證背景，精確錄入費率
+                    b_fee = c1.number_input("申購費率 %", 0.0, 5.0, 0.0, step=0.01)
+                    s_fee = c2.number_input("贖回費率 %", 0.0, 5.0, 0.0, step=0.01)
+                    a_fee = c3.number_input("年化雜費 % (含匯損預留)", 0.0, 5.0, 0.1, step=0.01)
+                    
+                    submit_save = st.form_submit_button("確認同步至雲端", type="primary")
+                    
+                    if submit_save:
+                        # 構建數據條目
+                        new_data = {
+                            "code": fund_code, "name": f_name,
+                            "buy_fee": float(b_fee), "sell_fee": float(s_fee), 
+                            "annual_fee": float(a_fee)
+                        }
+                        # 更新本地列表 (去重)
+                        st.session_state.favorites = [f for f in st.session_state.favorites if f['code'] != fund_code]
+                        st.session_state.favorites.append(new_data)
                         
-                        if st.form_submit_button("确认存入 Firebase"):
-                            new_fav = {
-                                "code": fund_code, "name": f_name, 
-                                "buy_fee": b_fee, "sell_fee": s_fee, "annual_fee": a_fee
-                            }
-                            st.session_state.favorites = [f for f in st.session_state.favorites if f['code'] != fund_code]
-                            st.session_state.favorites.append(new_fav)
-                            sync_to_cloud()
+                        # 觸發寫入
+                        sync_to_cloud()
                 
-                # AI 分析 (处理 429 错误)
+                # AI 分析
                 if client:
                     try:
                         st.divider()
-                        st.write("🤖 AI 专家分析建议：")
-                        prompt = f"分析基金{fund_code}，收益{ret_1y:.2f}%，回撤{mdd:.2f}%。用户10万本金，稳健型，一句建议。"
-                        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-                        st.info(response.text)
-                    except Exception as ai_e:
-                        if "429" in str(ai_e):
-                            st.warning("⚠️ AI 顾问配额已达上限，请稍后再试。")
+                        st.write("🤖 AI 投資建議：")
+                        prompt = f"分析基金{fund_code}，收益率{ret_1y:.2f}%，回撤{mdd:.2f}%。針對台胞證持有者，給出穩健投資建議。"
+                        res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+                        st.info(res.text)
+                    except: pass
 
             except Exception as e:
-                st.error(f"审计中断: {e}")
+                st.error(f"審計失敗: {e}")
 
 # ------------------------------------------
-# TAB 2: 多基金试算矩阵 (核心算法)
+# TAB 2: 收益對比矩陣
 # ------------------------------------------
 with tab2:
-    st.subheader("🧮 资产对比试算矩阵")
+    st.subheader("📊 多標的試算對比 (10萬本金基準)")
     if not st.session_state.favorites:
-        st.info("尚未在云端收藏任何标的。")
+        st.info("請先收藏基金。")
     else:
-        # 输入区
-        c_p, c_d = st.columns(2)
-        p_val = c_p.number_input("统一投入本金 (元)", value=100000)
-        d_val = c_d.number_input("预期持有周期 (天)", value=30, min_value=1)
+        cp, cd = st.columns(2)
+        p_val = cp.number_input("試算本金 (元)", value=100000)
+        d_val = cd.number_input("持有周期 (天)", value=30)
 
-        st.divider()
         results = []
-        for fund in st.session_state.favorites:
-            try:
-                # 收益估算逻辑 (基于10万本金和持久化费率)
-                mock_annual = 3.0 # 实际可动态获取
-                gross = p_val * (mock_annual / 100) * (d_val / 365)
-                # 固定成本与时间成本
-                fix_cost = p_val * (fund['buy_fee'] + fund['sell_fee']) / 100
-                time_cost = p_val * (fund['annual_fee'] / 100) * (d_val / 365)
-                net_profit = gross - fix_cost - time_cost
-                
-                results.append({
-                    "标的": fund['name'],
-                    "投资期净收益": round(net_profit, 2),
-                    "月均预期回报": round(net_profit / (d_val/30), 2),
-                    "实际折算年化": f"{(net_profit/p_val)*(365/d_val)*100:.2f}%"
-                })
-            except: continue
-
-        if results:
-            df_res = pd.DataFrame(results)
-            st.dataframe(df_res, width='stretch')
+        for f in st.session_state.favorites:
+            # 簡化收益計算邏輯
+            mock_annual = 3.2 
+            gross = p_val * (mock_annual / 100) * (d_val / 365)
+            # 費用損耗計算
+            one_time_cost = p_val * (f['buy_fee'] + f['sell_fee']) / 100
+            holding_cost = p_val * (f['annual_fee'] / 100) * (d_val / 365)
+            net_profit = gross - one_time_cost - holding_cost
             
-            fig_bar = px.bar(df_res, x="标的", y="投资期净收益", text="月均预期回报", 
-                             title=f"{p_val}元投入 {d_val}天 后净收益对比")
-            st.plotly_chart(fig_bar, width='stretch')
+            results.append({
+                "標的": f['name'],
+                "投資期淨利潤": round(net_profit, 2),
+                "月均預期": round(net_profit / (d_val/30), 2),
+                "實際折算年化": f"{(net_profit/p_val)*(365/d_val)*100:.2f}%"
+            })
+        
+        st.table(pd.DataFrame(results))
