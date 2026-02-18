@@ -72,12 +72,15 @@ def render_audit_tab(client, db, sync_to_cloud):
                                 break
 
                     # 获取同类基金总数
+                    # Note: akshare API doesn't provide count-only endpoint,
+                    # so we fetch the full dataframe and count rows
                     if mapped_type:
                         same_type_df = ak.fund_open_fund_rank_em(symbol=mapped_type)
                         if same_type_df is not None and not same_type_df.empty:
                             rank_same_total = len(same_type_df)
 
                     # 获取全市场基金总数
+                    # Note: fetching full market data for count
                     all_fund_df = ak.fund_open_fund_rank_em(symbol="全部")
                     if all_fund_df is not None and not all_fund_df.empty:
                         rank_all_total = len(all_fund_df)
