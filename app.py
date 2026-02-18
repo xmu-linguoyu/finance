@@ -174,6 +174,26 @@ with tab1:
             except Exception as e:
                 st.error(f"审计中断: {e}")
 
+    st.divider()
+    st.subheader("🛠️ Firebase 強制診斷工具")
+    col_diag1, col_diag2 = st.columns(2)
+
+    if col_diag1.button("🔥 測試：強制寫入簡單數據"):
+        if db:
+            try:
+                # 排除所有複雜結構，只寫入一個字串
+                doc_ref = db.collection("finance_app").document("user_portfolio")
+                doc_ref.set({"test_mode": "active", "timestamp": str(pd.Timestamp.now())}, merge=True)
+                st.success("✅ 簡單數據寫入成功！請立刻查看 Firebase 後台。")
+            except Exception as e:
+                st.error(f"❌ 強制寫入失敗：{str(e)}")
+        else:
+            st.error("❌ 數據庫對象 (db) 為空，請檢查 Secrets。")
+    
+    if col_diag2.button("📋 檢查本地數據內容"):
+        st.write("目前收藏夾內容：", st.session_state.favorites)
+        st.write("數據類型：", type(st.session_state.favorites))
+
 # ------------------------------------------
 # TAB 2: 多基金试算矩阵 (核心算法升级)
 # ------------------------------------------
